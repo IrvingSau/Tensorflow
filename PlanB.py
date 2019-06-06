@@ -1,9 +1,24 @@
 import tensorflow as tf
 import numpy as np
 import pandas as pd
+import random
 
-def CRBF():
+# Take value from 0 to 1 (with 3 digital fraction)
+def CRBF(input):
+    # Read oscillator function result
+    functionResultSet = "CRBF_Result.csv"
+    functionResult = pd.read_csv(functionResultSet, header=None)
+    functionResult = functionResult.values
 
+    # Standarlize input(Based on the precision of osCRBF_Activation/cillator function)
+    rowIndex = int(input * 1998); # The size of the result array is 1999S
+
+    # Random Column index (0 - 99)
+    columnIndex = random.randint(0, 99)
+
+    # Query for result dataframe(input)
+    returns = functionResult[rowIndex][columnIndex]
+    return returns
 
 
 
