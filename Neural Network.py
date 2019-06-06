@@ -1,5 +1,6 @@
 import tensorflow as tf
 import numpy as np
+import matplotlib.pyplot as plt
 
 # 如何定义一个神经层
     # 神经层中有什么？
@@ -26,6 +27,16 @@ def add_layer(inputs, in_size, out_size, activation_function=None):
     bias = tf.Variable(tf.zeros([1, out_size])) + 0.1 # Bias 不为0
 
     Wx_plus_bias = tf.matmul(inputs, Weight) + bias
+
+    # Batch Normalization
+    fc_mean, fc_var = tf.nn.moments(
+        Wx_plus_bias,
+        axes = [0]
+    )
+    scale = tf.Variable(tf.ones([out_size]))
+    shift = tf.Variable(tf.zeros([out_size]))
+    epsilon = 0.001
+    Wx_plus_b = tf.nn.batch_normalization(Wx_plus_bias, fc_mean, fc_var, shift, scale, epsilon)
 
     # 如果激活函数为空，直接将Wx + b输出
     # 否则将其传入activation_function中
@@ -68,14 +79,26 @@ sess = tf.Session()
 
 sess.run(init)
 
+
+fig = plt.figure()
+ax = fig.add_subplot(1, 1, 1)
+ax.scatter(x_data, y_data)
+plt.ion()
+plt.show()
 for i in range(1000):
     # session run时传入输入值
     sess.run(train_step, feed_dict={xs: x_data, ys: y_data})
     if i % 50 == 0:
-        print(sess.run(loss, feed_dict={xs:x_data, ys:y_data}))
+        try:
+            ax.lines.remove(lines[0])  # 去除掉Lines的第一个线段
+        except Exception:
+            pass
 
+        # print(sess.run(loss, feed_dict={xs:x_data, ys:y_data}))
+        prediction_value = sess.run(prediction, feed_dict={xs: x_data})
+        lines = ax.plot(x_data, prediction_value, 'r-', lw=5)
 
-
+        plt.pause(0.1)
 
 
 
