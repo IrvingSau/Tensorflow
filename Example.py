@@ -26,7 +26,7 @@ train = optimizer.minimize(loss)
 
 # 初始化模型
 # 初始化变量
-init = tf.global_variables_initizlizer()
+init = tf.initialize_all_variables()
 
 # 通过session指定运行模型图中的哪一个部分
 sess = tf.Session()
