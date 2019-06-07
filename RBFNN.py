@@ -1,5 +1,7 @@
 import tensorflow as tf
 import numpy as np
+from tensorflow.python.framework import ops
+import math
 # import matplotlib.pyplot as plt
 
 # 如何定义一个神经层
@@ -20,93 +22,106 @@ import numpy as np
     # 7. 用for来执行train
         # i. sess.run(train_step, feed_dict{x:[], y:[]})
 
-# Parameter setting
-# Parameters setting
-QPLS_NUM = 8;
-WINDOW_SIZE = 9; # 9 day predict one day
-FEATURE_NUM = 6; # HLOC + Volumn + Return
-# NUM_INPUT_NEURONS = QPLS_NUM + WINDOW_SIZE * FEATURE_NUM; # 62
-# NUM_HIDDEN_NEURONS = 30
-# NUM_OUTPUT_NEURONS = 2
+# 定义自己的激活函数
+def gaussian(x):
+    print(x)
+    return math.exp(- (x*x) / (0.25))
 
-#### TEST PARAMETER SETTING
-NUM_INPUT_NEURONS = 1
-NUM_HIDDEN_NEURONS = 10
-NUM_OUTPUT_NEURONS = 1
+np_gaussian = np.vectorize(gaussian)
+np_gaussian_32 = lambda x: np_gaussian(x).astype(np.float32)
+
+# 定义该激活函数的一次梯度函数
+def d_gaussian(x):
+    print(x)
+    return (-8) * x * math.exp(- (x*x) / (0.25))
+    # r = x % 1
+    # if r <= 0.5:
+    #     return 1
+    # else:
+    #     return 0
+np_d_gaussian = np.vectorize(d_gaussian)
+
+np_d_gaussian_32 = lambda x: np_d_gaussian(x).astype(np.float32)
+
+def tf_d_gaussian(x,name=None):
+    with tf.name_scope(name, "d_gaussian", [x]) as name:
+        y = tf.py_func(np_d_gaussian_32,
+                        [x],
+                        [tf.float32],
+                        name=name,
+                        stateful=False)
+        return y[0]
+
+def py_func(func, inp, Tout, stateful=True, name=None, grad=None):
+    # Need to generate a unique name to avoid duplicates:
+    rnd_name = 'PyFuncGrad' + str(np.random.randint(0, 1E+8))
+    tf.RegisterGradient(rnd_name)(grad)  # see _MySquareGrad for grad example
+    g = tf.get_default_graph()
+    with g.gradient_override_map({"PyFunc": rnd_name}):
+        return tf.py_func(func, inp, Tout, stateful=stateful, name=name)
+
+def gaussiangrad(op, grad):
+    x = op.inputs[0]
+    n_gr = tf_d_gaussian(x)
+    return grad * n_gr
+
+def gaussiangrad2(op, grad):
+    x = op.inputs[0]
+    r = tf.mod(x,1)
+    n_gr = tf.to_float(tf.less_equal(r, 0.5))
+    return grad * n_gr
+
+def tf_gaussian(x, name=None):
+    with tf.name_scope(name, "gaussian", [x]) as name:
+        y = py_func(np_gaussian_32,
+                        [x],
+                        [tf.float32],
+                        name=name,
+                        grad=gaussiangrad)  # <-- here's the call to the gradient
+        return y[0]
+
 
 # 定义神经网络层
-def add_Gaussian_layer(inputs, in_size, out_size, activation_function=None):
-    ##### 定义权重和偏执
+def add_layer(inputs, in_size, out_size, activation_function=None):
+    # 定义权重和偏执
     Weight = tf.Variable(tf.random_normal([in_size, out_size]))
     bias = tf.Variable(tf.zeros([1, out_size])) + 0.1 # Bias 不为0
-    Wx_plus_bias = tf.matmul(inputs, Weight) + bias # 高斯函数输入
 
-    # ##### 层正则化区域
-    # # Batch Normalization
-    # fc_mean, fc_var = tf.nn.moments(
-    #     Wx_plus_bias,
-    #     axes = [0]
-    # )
-    # scale = tf.Variable(tf.ones([out_size]))
-    # shift = tf.Variable(tf.zeros([out_size]))
-    # epsilon = 0.001
-    # Wx_plus_b = tf.nn.batch_normalization(Wx_plus_bias, fc_mean, fc_var, shift, scale, epsilon)
-    if activation_function is 1:
-        ######    高斯函数定义区域
-        # n_input = (self.input_data_trainX).shape[1]
-        # n_output = (self.input_data_trainY).shape[1]
-        n_input = 1;
-        n_output = 1;
+    # Wx_plus_bias = tf.matmul(inputs, Weight) + bias
+    Wx_plus_bias = tf.matmul(inputs, Weight) + bias
+    # Batch Normalization
+    fc_mean, fc_var = tf.nn.moments(
+        Wx_plus_bias,
+        axes = [0]
+    )
+    scale = tf.Variable(tf.ones([out_size]))
+    shift = tf.Variable(tf.zeros([out_size]))
+    epsilon = 0.001
+    Wx_plus_bias = tf.nn.batch_normalization(Wx_plus_bias, fc_mean, fc_var, shift, scale, epsilon)
 
-        # Weight = tf.Variable(tf.random_normal([NUM_HIDDEN_NEURONS, n_output]))
-        # bias = tf.Variable(tf.zeros([1, n_output])) + 0.1  # Bias 不为0
-
-        # 计算数据中心 c
-        c = tf.Variable(tf.random_normal([NUM_HIDDEN_NEURONS, n_input]), name='c')
-        # 计算方差
-        variance = tf.Variable(tf.random_normal([1, NUM_HIDDEN_NEURONS]), name='variance')
-        # 方差的平方
-        variance_2 = tf.square(variance)
-        # 计算特征样本与中心的距离
-        dist = tf.reduce_sum(tf.square(tf.subtract(tf.tile(xs, [NUM_HIDDEN_NEURONS, 1]), c)), 1)
-        dist = tf.multiply(1.0, tf.transpose(dist))
-        # 高斯函数输出
-        outputs = tf.exp(tf.multiply(-1.0, tf.divide(dist, tf.multiply(2.0, variance_2))))
-
-    elif activation_function is 2:
-        outputs = tf.nn.relu(Wx_plus_bias)
-    elif activation_function is None:
-        outputs = Wx_plus_bias;
-
+    # 如果激活函数为空，直接将Wx + b输出
+    # 否则将其传入activation_function中
+    if activation_function is None:
+        outputs = Wx_plus_bias
+    elif activation_function is 1:
+        outputs = tf_gaussian(Wx_plus_bias)
     return outputs
-
-def add_output_layer(RBF_OUT):
-    n_input = 300;
-    n_output = 300;
-
-    Weight = tf.Variable(tf.random_normal([NUM_HIDDEN_NEURONS, n_output]))
-    bias = tf.Variable(tf.zeros([1, n_output])) + 0.1  # Bias 不为0
-    output_layer_in = tf.matmul(RBF_OUT, Weight) + bias
-
-    ## 输出层输出
-    y_pred = tf.nn.sigmoid(output_layer_in)
-
-    return y_pred
 
 # Create data
 x_data = np.linspace(-1, 1, 300)[:, np.newaxis]      # 1个特征 300个训练样本
 noise = np.random.normal(0, 0.05, x_data.shape)      # 为每个样本x增加噪音
 y_data = np.square(x_data) - 0.5 + noise             # 设置我们的Y: 300行
 
-
 # 定义输入神经网络的值的占位符 placeholder([num_examples, num_feature])
 xs = tf.placeholder(tf.float32, [None, 1])
 ys = tf.placeholder(tf.float32, [None, 1])
 
 # Hidden layer 1
-Gaussian_Layer = add_Gaussian_layer(xs, in_size=NUM_INPUT_NEURONS, out_size=NUM_HIDDEN_NEURONS, activation_function=1)
+il = add_layer(xs, in_size=1, out_size=10, activation_function=1)
+# Hidden layer 2
+hl = add_layer(il, in_size=10, out_size=10, activation_function=1)
 # Output layer
-prediction = add_output_layer(Gaussian_Layer)
+prediction = add_layer(hl, in_size=10, out_size=1, activation_function=None)
 
 # Define Loss function (MSE)
 loss = tf.reduce_mean(          # 求平均值
@@ -115,7 +130,7 @@ loss = tf.reduce_mean(          # 求平均值
         # reduction_indices 为对张量进行维度处理， 此处为1维（将多个不同的error相加）
 
 # 定义每一个step中使用什么优化器来最小化loss
-train_step = tf.train.AdamOptimizer(0.1).minimize(loss)
+train_step = tf.train.GradientDescentOptimizer(0.1).minimize(loss)
 
 init = tf.initialize_all_variables()
 
