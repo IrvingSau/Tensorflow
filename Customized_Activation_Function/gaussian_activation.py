@@ -1,5 +1,7 @@
 import tensorflow as tf
 import numpy as np
+from tensorflow.python.framework import ops
+import math
 # import matplotlib.pyplot as plt
 
 # 如何定义一个神经层
@@ -20,6 +22,63 @@ import numpy as np
     # 7. 用for来执行train
         # i. sess.run(train_step, feed_dict{x:[], y:[]})
 
+# 定义自己的激活函数
+def gaussian(x):
+    return math.exp(- (x*x) / (0.25))
+
+np_gaussian = np.vectorize(gaussian)
+np_gaussian_32 = lambda x: np_gaussian(x).astype(np.float32)
+
+# 定义该激活函数的一次梯度函数
+def d_gaussian(x):
+    return (-8) * x * math.exp(- (x*x) / (0.25))
+    # r = x % 1
+    # if r <= 0.5:
+    #     return 1
+    # else:
+    #     return 0
+np_d_gaussian = np.vectorize(d_gaussian)
+
+np_d_gaussian_32 = lambda x: np_d_gaussian(x).astype(np.float32)
+
+def tf_d_gaussian(x,name=None):
+    with tf.name_scope(name, "d_gaussian", [x]) as name:
+        y = tf.py_func(np_d_gaussian_32,
+                        [x],
+                        [tf.float32],
+                        name=name,
+                        stateful=False)
+        return y[0]
+
+def py_func(func, inp, Tout, stateful=True, name=None, grad=None):
+    # Need to generate a unique name to avoid duplicates:
+    rnd_name = 'PyFuncGrad' + str(np.random.randint(0, 1E+8))
+    tf.RegisterGradient(rnd_name)(grad)  # see _MySquareGrad for grad example
+    g = tf.get_default_graph()
+    with g.gradient_override_map({"PyFunc": rnd_name}):
+        return tf.py_func(func, inp, Tout, stateful=stateful, name=name)
+
+def gaussiangrad(op, grad):
+    x = op.inputs[0]
+    n_gr = tf_d_gaussian(x)
+    return grad * n_gr
+
+def gaussiangrad2(op, grad):
+    x = op.inputs[0]
+    r = tf.mod(x,1)
+    n_gr = tf.to_float(tf.less_equal(r, 0.5))
+    return grad * n_gr
+
+def tf_gaussian(x, name=None):
+    with tf.name_scope(name, "gaussian", [x]) as name:
+        y = py_func(np_gaussian_32,
+                        [x],
+                        [tf.float32],
+                        name=name,
+                        grad=gaussiangrad)  # <-- here's the call to the gradient
+        return y[0]
+
+
 # 定义神经网络层
 def add_layer(inputs, in_size, out_size, activation_function=None):
     # 定义权重和偏执
@@ -28,22 +87,22 @@ def add_layer(inputs, in_size, out_size, activation_function=None):
 
     # Wx_plus_bias = tf.matmul(inputs, Weight) + bias
     Wx_plus_bias = tf.matmul(inputs, Weight) + bias
-    # Batch Normalization
-    fc_mean, fc_var = tf.nn.moments(
-        Wx_plus_bias,
-        axes = [0]
-    )
-    scale = tf.Variable(tf.ones([out_size]))
-    shift = tf.Variable(tf.zeros([out_size]))
-    epsilon = 0.001
-    Wx_plus_b = tf.nn.batch_normalization(Wx_plus_bias, fc_mean, fc_var, shift, scale, epsilon)
+    # # Batch Normalization
+    # fc_mean, fc_var = tf.nn.moments(
+    #     Wx_plus_bias,
+    #     axes = [0]
+    # )
+    # scale = tf.Variable(tf.ones([out_size]))
+    # shift = tf.Variable(tf.zeros([out_size]))
+    # epsilon = 0.001
+    # Wx_plus_b = tf.nn.batch_normalization(Wx_plus_bias, fc_mean, fc_var, shift, scale, epsilon)
 
     # 如果激活函数为空，直接将Wx + b输出
     # 否则将其传入activation_function中
     if activation_function is None:
         outputs = Wx_plus_bias
-    else:
-        outputs = activation_function(Wx_plus_bias)
+    elif activation_function is 1:
+        outputs = tf_gaussian(Wx_plus_bias)
     return outputs
 
 # Create data
@@ -56,11 +115,11 @@ xs = tf.placeholder(tf.float32, [None, 1])
 ys = tf.placeholder(tf.float32, [None, 1])
 
 # Hidden layer 1
-il = add_layer(xs, in_size=1, out_size=10, activation_function=tf.nn.relu)
+il = add_layer(xs, in_size=1, out_size=10, activation_function=1)
 # Hidden layer 2
-hl = add_layer(il, in_size=10, out_size=10, activation_function=tf.nn.relu)
+# \\hl = add_layer(il, in_size=10, out_size=10, activation_function=1)
 # Output layer
-prediction = add_layer(hl, in_size=10, out_size=1, activation_function=None)
+prediction = add_layer(il, in_size=10, out_size=1, activation_function=None)
 
 # Define Loss function (MSE)
 loss = tf.reduce_mean(          # 求平均值

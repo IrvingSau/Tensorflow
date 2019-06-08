@@ -2,7 +2,7 @@ import tensorflow as tf
 import numpy as np
 from tensorflow.python.framework import ops
 import math
-# import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt
 
 # 如何定义一个神经层
     # 神经层中有什么？
@@ -24,7 +24,7 @@ import math
 
 # 定义自己的激活函数
 def gaussian(x):
-    print(x)
+    # print(x)
     return math.exp(- (x*x) / (0.25))
 
 np_gaussian = np.vectorize(gaussian)
@@ -32,7 +32,7 @@ np_gaussian_32 = lambda x: np_gaussian(x).astype(np.float32)
 
 # 定义该激活函数的一次梯度函数
 def d_gaussian(x):
-    print(x)
+    # print(x)
     return (-8) * x * math.exp(- (x*x) / (0.25))
     # r = x % 1
     # if r <= 0.5:
@@ -141,28 +141,28 @@ sess = tf.Session()
 sess.run(init)
 
 
-# fig = plt.figure()
-# ax = fig.add_subplot(1, 1, 1)
-# ax.scatter(x_data, y_data)
-# plt.ion()
-# plt.show()
+fig = plt.figure()
+ax = fig.add_subplot(1, 1, 1)
+ax.scatter(x_data, y_data)
+plt.ion()
+plt.show()
 for i in range(1000):
     # session run时传入输入值
     sess.run(train_step, feed_dict={xs: x_data, ys: y_data})
-    if i % 50 == 0:
-        # try:
-        #     ax.lines.remove(lines[0])  # 去除掉Lines的第一个线段
-        # except Exception:
-        #     pass
+    if i % 1 == 0:
+        try:
+            ax.lines.remove(lines[0])  # 去除掉Lines的第一个线段
+        except Exception:
+            pass
 
         print(sess.run(loss, feed_dict={xs:x_data, ys:y_data}))
-        # prediction_value = sess.run(prediction, feed_dict={xs: x_data})
-        # lines = ax.plot(x_data, prediction_value, 'r-', lw=5)
+        prediction_value = sess.run(prediction, feed_dict={xs: x_data})
+        lines = ax.plot(x_data, prediction_value, 'r-', lw=5)
 
-        # plt.pause(0.1)
+        plt.pause(0.1)
 
 
-
+plt.pause(10)
 
 
 
